@@ -87,7 +87,7 @@ const CameraView = () => {
 
   const startPoseDetection = () => {
     const detectFrame = async () => {
-      if (!videoRef.current || !canvasRef.current || !isActive) return;
+      if (!videoRef.current || !canvasRef.current) return;
 
       const video = videoRef.current;
       const canvas = canvasRef.current;
