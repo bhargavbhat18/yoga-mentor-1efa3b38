@@ -159,15 +159,27 @@ const ImageUpload = () => {
             
             {result && (
               <div className="absolute bottom-4 left-4 right-4">
-                <div className="bg-card/90 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
+                <div className="bg-card/95 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <h4 className="font-semibold mb-1">{result.pose}</h4>
-                      <p className="text-sm text-muted-foreground">{result.feedback}</p>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="h-2 w-2 rounded-full bg-primary" />
+                        <span className="text-xs font-medium text-primary uppercase tracking-wide">
+                          Analysis Result
+                        </span>
+                      </div>
+                      <h4 className="text-xl font-bold text-foreground mb-2">
+                        {result.pose}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        {result.feedback}
+                      </p>
                     </div>
-                    <Badge className={getConfidenceColor(result.confidence)}>
-                      {Math.round(result.confidence * 100)}%
-                    </Badge>
+                    {result.confidence > 0 && (
+                      <Badge className={getConfidenceColor(result.confidence)}>
+                        {Math.round(result.confidence * 100)}%
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
