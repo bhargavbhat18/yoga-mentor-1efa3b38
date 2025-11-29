@@ -132,6 +132,33 @@ function calculateAngle(a: any, b: any, c: any): number {
   return angle;
 }
 
+// Calculate distance between two points
+function calculateDistance(a: any, b: any): number {
+  return Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+}
+
+// Calculate body alignment (returns 0-1, where 1 is perfectly aligned)
+function calculateAlignment(point1: any, point2: any, point3: any): number {
+  const angle1 = Math.atan2(point2.y - point1.y, point2.x - point1.x);
+  const angle2 = Math.atan2(point3.y - point2.y, point3.x - point2.x);
+  const angleDiff = Math.abs(angle1 - angle2);
+  return 1 - Math.min(angleDiff / Math.PI, 1);
+}
+
+// Check if body is vertical (for standing poses)
+function isBodyVertical(shoulder: any, hip: any, ankle: any): boolean {
+  const bodyAngle = Math.abs(Math.atan2(hip.y - shoulder.y, hip.x - shoulder.x) * 180 / Math.PI);
+  return bodyAngle > 80 && bodyAngle < 100;
+}
+
+// Calculate pose confidence based on multiple criteria
+function calculatePoseConfidence(criteriaMet: boolean[], weights?: number[]): number {
+  if (!weights) weights = Array(criteriaMet.length).fill(1);
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  const metWeight = criteriaMet.reduce((sum, met, i) => sum + (met ? weights![i] : 0), 0);
+  return metWeight / totalWeight;
+}
+
 // Classify the detected pose
 export function classifyPose(poseResult: PoseResult): PoseClassification {
   const landmarks = poseResult.landmarks;
@@ -145,6 +172,7 @@ export function classifyPose(poseResult: PoseResult): PoseClassification {
   }
 
   // Key landmark indices (MediaPipe Pose)
+  const nose = landmarks[0];
   const leftShoulder = landmarks[11];
   const rightShoulder = landmarks[12];
   const leftElbow = landmarks[13];
@@ -158,72 +186,161 @@ export function classifyPose(poseResult: PoseResult): PoseClassification {
   const leftAnkle = landmarks[27];
   const rightAnkle = landmarks[28];
 
-  // Calculate key angles
+  // Calculate comprehensive angles
   const leftArmAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
   const rightArmAngle = calculateAngle(rightShoulder, rightElbow, rightWrist);
   const leftLegAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
   const rightLegAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-  const hipAngle = Math.abs(leftHip.y - rightHip.y);
+  const leftShoulderAngle = calculateAngle(leftElbow, leftShoulder, leftHip);
+  const rightShoulderAngle = calculateAngle(rightElbow, rightShoulder, rightHip);
+  const leftHipAngle = calculateAngle(leftShoulder, leftHip, leftKnee);
+  const rightHipAngle = calculateAngle(rightShoulder, rightHip, rightKnee);
+  
+  // Body alignment calculations
+  const shoulderAlignment = calculateAlignment(leftShoulder, { x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2 }, rightShoulder);
+  const hipWidth = calculateDistance(leftHip, rightHip);
+  const shoulderWidth = calculateDistance(leftShoulder, rightShoulder);
+  const bodyAlignment = calculateAlignment(leftShoulder, leftHip, leftAnkle);
+  
+  // Torso and spine calculations
+  const torsoAngle = Math.atan2(
+    (leftHip.y + rightHip.y) / 2 - (leftShoulder.y + rightShoulder.y) / 2,
+    (leftHip.x + rightHip.x) / 2 - (leftShoulder.x + rightShoulder.x) / 2
+  ) * 180 / Math.PI;
 
-  // Simple pose classification logic
-  // Plank: Arms extended, body straight
-  if (leftArmAngle > 160 && rightArmAngle > 160 && leftLegAngle > 160 && rightLegAngle > 160) {
-    return {
-      pose: YOGA_POSES.PLANK,
-      confidence: 0.85,
-      feedback: 'Keep your core engaged and body in a straight line'
-    };
+  // Enhanced pose classification with validation rules
+  
+  // PLANK POSE: Arms extended, body straight, core engaged
+  const plankCriteria = [
+    leftArmAngle > 160 && rightArmAngle > 160, // Arms straight
+    leftLegAngle > 160 && rightLegAngle > 160, // Legs straight
+    bodyAlignment > 0.7, // Body alignment
+    Math.abs(leftShoulder.y - leftHip.y) < 0.15, // Shoulders and hips level
+    leftShoulderAngle > 70 && leftShoulderAngle < 110 // Proper shoulder angle
+  ];
+  if (plankCriteria.filter(c => c).length >= 4) {
+    const confidence = calculatePoseConfidence(plankCriteria, [1, 1, 1.5, 1, 0.8]);
+    const feedback = !plankCriteria[2] ? 'Keep your body in a straight line from head to heels' :
+                     !plankCriteria[3] ? 'Lower your hips to align with shoulders' :
+                     'Great! Keep your core engaged and breathe steadily';
+    return { pose: YOGA_POSES.PLANK, confidence, feedback };
   }
 
-  // Downward Dog: Arms and legs extended, hips up
-  if (leftArmAngle > 150 && rightArmAngle > 150 && leftLegAngle > 140 && rightLegAngle > 140 && leftHip.y < leftShoulder.y) {
-    return {
-      pose: YOGA_POSES.DOWNWARD_DOG,
-      confidence: 0.82,
-      feedback: 'Press your heels toward the ground and relax your neck'
-    };
+  // DOWNWARD DOG: Inverted V-shape, arms and legs extended
+  const downwardDogCriteria = [
+    leftArmAngle > 150 && rightArmAngle > 150, // Arms extended
+    leftLegAngle > 140 && rightLegAngle > 140, // Legs extended
+    leftHip.y < leftShoulder.y - 0.1, // Hips elevated above shoulders
+    leftHipAngle > 100 && leftHipAngle < 140, // Hip angle for V-shape
+    Math.abs(torsoAngle) > 30 && Math.abs(torsoAngle) < 70 // Proper torso angle
+  ];
+  if (downwardDogCriteria.filter(c => c).length >= 4) {
+    const confidence = calculatePoseConfidence(downwardDogCriteria, [1, 1, 1.5, 1.2, 1]);
+    const feedback = !downwardDogCriteria[2] ? 'Lift your hips higher to form an inverted V' :
+                     !downwardDogCriteria[1] ? 'Straighten your legs more' :
+                     'Excellent! Press heels toward ground and relax your neck';
+    return { pose: YOGA_POSES.DOWNWARD_DOG, confidence, feedback };
   }
 
-  // Warrior II: One arm extended, legs wide, torso upright
-  if ((leftArmAngle > 160 || rightArmAngle > 160) && Math.abs(leftLegAngle - rightLegAngle) > 30) {
-    return {
-      pose: YOGA_POSES.WARRIOR_II,
-      confidence: 0.80,
-      feedback: 'Keep your front knee over your ankle and arms parallel to the ground'
-    };
+  // WARRIOR II: Arms extended horizontally, front knee bent, back leg straight
+  const warrior2Criteria = [
+    (leftArmAngle > 160 || rightArmAngle > 160), // One or both arms extended
+    Math.abs(leftLegAngle - rightLegAngle) > 40, // Significant leg angle difference
+    isBodyVertical(leftShoulder, leftHip, leftAnkle) || isBodyVertical(rightShoulder, rightHip, rightAnkle), // Torso upright
+    Math.abs(leftShoulder.y - rightShoulder.y) < 0.08, // Shoulders level
+    hipWidth > shoulderWidth * 1.3 // Wide stance
+  ];
+  if (warrior2Criteria.filter(c => c).length >= 4) {
+    const confidence = calculatePoseConfidence(warrior2Criteria, [1, 1.5, 1.2, 0.8, 1]);
+    const feedback = !warrior2Criteria[2] ? 'Keep your torso upright and centered' :
+                     !warrior2Criteria[1] ? 'Bend your front knee more, keep back leg straight' :
+                     'Perfect! Arms parallel to ground, front knee over ankle';
+    return { pose: YOGA_POSES.WARRIOR_II, confidence, feedback };
   }
 
-  // Tree Pose: Standing on one leg, other leg bent
-  if (Math.abs(leftLegAngle - rightLegAngle) > 60) {
-    return {
-      pose: YOGA_POSES.TREE,
-      confidence: 0.78,
-      feedback: 'Find your balance and press your foot into your thigh'
-    };
+  // WARRIOR I: Arms overhead, front knee bent, back leg straight, chest facing forward
+  const warrior1Criteria = [
+    leftWrist.y < leftShoulder.y - 0.15 || rightWrist.y < rightShoulder.y - 0.15, // Arms raised overhead
+    Math.abs(leftLegAngle - rightLegAngle) > 40, // Leg angle difference
+    isBodyVertical(leftShoulder, leftHip, leftAnkle) || isBodyVertical(rightShoulder, rightHip, rightAnkle), // Torso upright
+    hipWidth > shoulderWidth * 1.2 // Moderate stance width
+  ];
+  if (warrior1Criteria.filter(c => c).length >= 3) {
+    const confidence = calculatePoseConfidence(warrior1Criteria, [1.2, 1.5, 1.2, 1]);
+    const feedback = !warrior1Criteria[0] ? 'Raise your arms higher overhead' :
+                     !warrior1Criteria[2] ? 'Keep your chest lifted and facing forward' :
+                     'Great! Reach up through your fingertips, ground through back foot';
+    return { pose: YOGA_POSES.WARRIOR_I, confidence, feedback };
   }
 
-  // Mountain Pose: Standing straight, arms at sides or overhead
-  if (leftLegAngle > 160 && rightLegAngle > 160 && hipAngle < 0.05) {
-    return {
-      pose: YOGA_POSES.MOUNTAIN,
-      confidence: 0.85,
-      feedback: 'Stand tall with your weight evenly distributed'
-    };
+  // TREE POSE: Standing on one leg, other foot against thigh
+  const treeCriteria = [
+    Math.abs(leftLegAngle - rightLegAngle) > 70, // Large leg angle difference
+    (leftLegAngle > 160 || rightLegAngle > 160), // One leg straight
+    (leftLegAngle < 100 || rightLegAngle < 100), // Other leg bent
+    Math.abs(leftShoulder.x - rightShoulder.x) < 0.1, // Shoulders balanced
+    isBodyVertical(leftShoulder, leftHip, leftAnkle) || isBodyVertical(rightShoulder, rightHip, rightAnkle) // Upright
+  ];
+  if (treeCriteria.filter(c => c).length >= 4) {
+    const confidence = calculatePoseConfidence(treeCriteria, [1.5, 1, 1, 1, 1.2]);
+    const feedback = !treeCriteria[4] ? 'Find your center and stand tall' :
+                     !treeCriteria[2] ? 'Bring your foot higher on your thigh' :
+                     'Wonderful balance! Focus on a fixed point to maintain stability';
+    return { pose: YOGA_POSES.TREE, confidence, feedback };
   }
 
-  // Child's Pose: Curled forward, knees bent
-  if (leftLegAngle < 90 && rightLegAngle < 90 && leftHip.y > leftShoulder.y) {
-    return {
-      pose: YOGA_POSES.CHILD,
-      confidence: 0.80,
-      feedback: 'Rest your forehead on the ground and breathe deeply'
-    };
+  // MOUNTAIN POSE: Standing straight, arms at sides or overhead, body aligned
+  const mountainCriteria = [
+    leftLegAngle > 160 && rightLegAngle > 160, // Both legs straight
+    Math.abs(leftHip.y - rightHip.y) < 0.05, // Hips level
+    isBodyVertical(leftShoulder, leftHip, leftAnkle), // Body vertical
+    Math.abs(leftShoulder.x - rightShoulder.x) < 0.1, // Shoulders centered
+    shoulderAlignment > 0.8 // Shoulders aligned
+  ];
+  if (mountainCriteria.filter(c => c).length >= 4) {
+    const confidence = calculatePoseConfidence(mountainCriteria, [1, 1, 1.5, 1, 1]);
+    const feedback = !mountainCriteria[2] ? 'Stand taller with weight evenly distributed' :
+                     !mountainCriteria[1] ? 'Level your hips and engage your core' :
+                     'Perfect alignment! Breathe deeply and maintain this foundation';
+    return { pose: YOGA_POSES.MOUNTAIN, confidence, feedback };
+  }
+
+  // CHILD'S POSE: Curled forward, knees bent, forehead near ground
+  const childCriteria = [
+    leftLegAngle < 90 && rightLegAngle < 90, // Knees bent
+    leftHip.y > leftShoulder.y + 0.1, // Hips higher than shoulders
+    nose.y > leftHip.y - 0.05, // Head lowered
+    leftShoulderAngle < 100 && rightShoulderAngle < 100, // Arms forward/relaxed
+    Math.abs(leftKnee.y - rightKnee.y) < 0.1 // Knees level
+  ];
+  if (childCriteria.filter(c => c).length >= 4) {
+    const confidence = calculatePoseConfidence(childCriteria, [1, 1, 1.2, 0.8, 0.8]);
+    const feedback = !childCriteria[2] ? 'Lower your forehead closer to the ground' :
+                     !childCriteria[0] ? 'Sit back deeper on your heels' :
+                     'Relax completely. Let your forehead rest and breathe deeply';
+    return { pose: YOGA_POSES.CHILD, confidence, feedback };
+  }
+
+  // COBRA POSE: Lying face down, arms pushing chest up, legs extended
+  const cobraCriteria = [
+    leftArmAngle > 100 && leftArmAngle < 170 && rightArmAngle > 100 && rightArmAngle < 170, // Arms partially extended
+    leftShoulder.y < leftHip.y - 0.1, // Chest lifted above hips
+    leftLegAngle > 150 && rightLegAngle > 150, // Legs straight
+    leftShoulderAngle > 120 && rightShoulderAngle > 120, // Shoulders back
+    Math.abs(torsoAngle + 90) < 40 // Back arched upward
+  ];
+  if (cobraCriteria.filter(c => c).length >= 3) {
+    const confidence = calculatePoseConfidence(cobraCriteria, [1.2, 1.5, 1, 1, 1.2]);
+    const feedback = !cobraCriteria[1] ? 'Lift your chest higher, press through your palms' :
+                     !cobraCriteria[3] ? 'Draw shoulders back and down, away from ears' :
+                     'Beautiful! Keep legs engaged and gaze forward and up';
+    return { pose: YOGA_POSES.COBRA, confidence, feedback };
   }
 
   return {
     pose: 'Unknown Pose',
-    confidence: 0.60,
-    feedback: 'Adjust your position or try a different pose from the library'
+    confidence: 0.50,
+    feedback: 'Position yourself clearly or try a pose from the library'
   };
 }
 
