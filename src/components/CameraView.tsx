@@ -153,15 +153,27 @@ const CameraView = () => {
 
         {currentPose && isActive && (
           <div className="absolute top-4 left-4 right-4 space-y-2">
-            <div className="bg-card/90 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
+            <div className="bg-card/95 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <h3 className="font-semibold text-lg mb-1">{currentPose.pose}</h3>
-                  <p className="text-sm text-muted-foreground">{currentPose.feedback}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                    <span className="text-xs font-medium text-primary uppercase tracking-wide">
+                      Detected Pose
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-2">
+                    {currentPose.pose}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {currentPose.feedback}
+                  </p>
                 </div>
-                <Badge className={getConfidenceColor(currentPose.confidence)}>
-                  {Math.round(currentPose.confidence * 100)}%
-                </Badge>
+                {currentPose.confidence > 0 && (
+                  <Badge className={getConfidenceColor(currentPose.confidence)}>
+                    {Math.round(currentPose.confidence * 100)}%
+                  </Badge>
+                )}
               </div>
             </div>
           </div>

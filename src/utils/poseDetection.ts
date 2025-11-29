@@ -165,7 +165,7 @@ export function classifyPose(poseResult: PoseResult): PoseClassification {
   
   if (!landmarks || landmarks.length < 33) {
     return {
-      pose: 'Unknown',
+      pose: 'Position Your Body',
       confidence: 0,
       feedback: 'Unable to detect pose landmarks'
     };
@@ -185,6 +185,42 @@ export function classifyPose(poseResult: PoseResult): PoseClassification {
   const rightKnee = landmarks[26];
   const leftAnkle = landmarks[27];
   const rightAnkle = landmarks[28];
+
+  // Check landmark visibility - require key body parts to be visible
+  const requiredLandmarks = [
+    leftShoulder, rightShoulder, 
+    leftHip, rightHip, 
+    leftKnee, rightKnee, 
+    leftAnkle, rightAnkle
+  ];
+
+  // Check if all required landmarks have sufficient visibility
+  const visibilityThreshold = 0.5;
+  const allVisible = requiredLandmarks.every(landmark => 
+    landmark && landmark.visibility !== undefined && landmark.visibility > visibilityThreshold
+  );
+
+  if (!allVisible) {
+    return {
+      pose: 'Show Full Body',
+      confidence: 0,
+      feedback: 'Please step back to show your full body from head to feet in the frame'
+    };
+  }
+
+  // Additional check: ensure body is within reasonable bounds
+  const bodyHeight = Math.abs(
+    Math.max(leftShoulder.y, rightShoulder.y) - 
+    Math.max(leftAnkle.y, rightAnkle.y)
+  );
+  
+  if (bodyHeight < 0.4) {
+    return {
+      pose: 'Move Back',
+      confidence: 0,
+      feedback: 'Step back from the camera to fit your entire body in the frame'
+    };
+  }
 
   // Calculate comprehensive angles
   const leftArmAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
