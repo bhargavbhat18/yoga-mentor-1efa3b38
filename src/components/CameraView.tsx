@@ -13,6 +13,7 @@ const CameraView = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [currentPose, setCurrentPose] = useState<PoseClassification | null>(null);
+  const [visibilityWarning, setVisibilityWarning] = useState<string | null>(null);
   const { toast } = useToast();
   const animationFrameRef = useRef<number>();
 
@@ -112,7 +113,15 @@ const CameraView = () => {
 
         // Classify pose
         const classification = classifyPose(poseResult);
-        setCurrentPose(classification);
+        
+        // Check if it's a visibility warning or actual pose
+        if (classification.pose === 'Show Full Body' || classification.pose === 'Move Back') {
+          setVisibilityWarning(classification.feedback);
+          setCurrentPose(null);
+        } else {
+          setVisibilityWarning(null);
+          setCurrentPose(classification);
+        }
       }
 
       // Continue detection
@@ -151,7 +160,17 @@ const CameraView = () => {
           </div>
         )}
 
-        {currentPose && isActive && (
+        {visibilityWarning && isActive && (
+          <div className="absolute top-4 left-4 right-4">
+            <div className="bg-warning/95 backdrop-blur-md rounded-lg p-4 border border-warning shadow-lg">
+              <p className="text-sm font-medium text-warning-foreground text-center">
+                ⚠️ {visibilityWarning}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {currentPose && isActive && !visibilityWarning && (
           <div className="absolute top-4 left-4 right-4 space-y-2">
             <div className="bg-card/95 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
               <div className="flex items-start justify-between gap-4">

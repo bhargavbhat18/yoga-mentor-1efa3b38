@@ -10,6 +10,7 @@ const ImageUpload = () => {
   const [image, setImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<PoseClassification | null>(null);
+  const [visibilityWarning, setVisibilityWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -69,12 +70,24 @@ const ImageUpload = () => {
 
           // Classify pose
           const classification = classifyPose(poseResult);
-          setResult(classification);
-
-          toast({
-            title: "Analysis complete",
-            description: `Detected: ${classification.pose}`,
-          });
+          
+          // Check if it's a visibility warning or actual pose
+          if (classification.pose === 'Show Full Body' || classification.pose === 'Move Back') {
+            setVisibilityWarning(classification.feedback);
+            setResult(null);
+            toast({
+              title: "Full body not visible",
+              description: classification.feedback,
+              variant: "destructive",
+            });
+          } else {
+            setVisibilityWarning(null);
+            setResult(classification);
+            toast({
+              title: "Analysis complete",
+              description: `Detected: ${classification.pose}`,
+            });
+          }
         }
       } else {
         toast({
@@ -98,6 +111,7 @@ const ImageUpload = () => {
   const clearImage = () => {
     setImage(null);
     setResult(null);
+    setVisibilityWarning(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -157,7 +171,17 @@ const ImageUpload = () => {
               className="absolute inset-0 w-full h-full"
             />
             
-            {result && (
+            {visibilityWarning && (
+              <div className="absolute bottom-4 left-4 right-4">
+                <div className="bg-warning/95 backdrop-blur-md rounded-lg p-4 border border-warning shadow-lg">
+                  <p className="text-sm font-medium text-warning-foreground text-center">
+                    ⚠️ {visibilityWarning}
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            {result && !visibilityWarning && (
               <div className="absolute bottom-4 left-4 right-4">
                 <div className="bg-card/95 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
                   <div className="flex items-start justify-between gap-4">
