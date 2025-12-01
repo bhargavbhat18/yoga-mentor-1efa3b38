@@ -195,12 +195,20 @@ export function classifyPose(poseResult: PoseResult): PoseClassification {
   ];
 
   // Check if all required landmarks have sufficient visibility
-  const visibilityThreshold = 0.5;
+  const visibilityThreshold = 0.3; // Lowered from 0.5 for better detection
+  const visibilityScores = requiredLandmarks.map(landmark => 
+    landmark && landmark.visibility !== undefined ? landmark.visibility : 0
+  );
+  
+  console.log('Landmark visibility scores:', visibilityScores);
+  
   const allVisible = requiredLandmarks.every(landmark => 
     landmark && landmark.visibility !== undefined && landmark.visibility > visibilityThreshold
   );
 
   if (!allVisible) {
+    const minVisibility = Math.min(...visibilityScores);
+    console.log('Not all landmarks visible. Min visibility:', minVisibility);
     return {
       pose: 'Show Full Body',
       confidence: 0,
@@ -214,7 +222,9 @@ export function classifyPose(poseResult: PoseResult): PoseClassification {
     Math.max(leftAnkle.y, rightAnkle.y)
   );
   
-  if (bodyHeight < 0.4) {
+  console.log('Body height detected:', bodyHeight);
+  
+  if (bodyHeight < 0.3) { // Lowered from 0.4 for better detection
     return {
       pose: 'Move Back',
       confidence: 0,
