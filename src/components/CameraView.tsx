@@ -142,13 +142,13 @@ const CameraView = () => {
       <div className="relative aspect-video bg-muted/20">
         <video
           ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
           playsInline
           muted
         />
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full scale-x-[-1]"
         />
         
         {!isActive && (
