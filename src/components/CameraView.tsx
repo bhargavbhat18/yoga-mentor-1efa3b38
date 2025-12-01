@@ -142,13 +142,15 @@ const CameraView = () => {
       <div className="relative aspect-video bg-muted/20">
         <video
           ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ transform: 'scaleX(-1)' }}
           playsInline
           muted
         />
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full scale-x-[-1]"
+          className="absolute inset-0 w-full h-full"
+          style={{ transform: 'scaleX(-1)' }}
         />
         
         {!isActive && (
