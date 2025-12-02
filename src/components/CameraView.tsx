@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Camera, CameraOff, Loader2 } from 'lucide-react';
+import { Camera, CameraOff, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { detectPose, classifyPose, drawPoseLandmarks, initializePoseDetection, type PoseClassification } from '@/utils/poseDetection';
 
@@ -137,6 +137,18 @@ const CameraView = () => {
     return 'bg-destructive text-destructive-foreground';
   };
 
+  const isPoseCorrect = (classification: PoseClassification) => {
+    const feedback = classification.feedback.toLowerCase();
+    return (
+      feedback.includes('great') ||
+      feedback.includes('perfect') ||
+      feedback.includes('excellent') ||
+      feedback.includes('wonderful') ||
+      feedback.includes('beautiful') ||
+      classification.confidence >= 0.8
+    );
+  };
+
   return (
     <Card className="relative overflow-hidden bg-gradient-to-br from-card to-muted/50 shadow-[var(--shadow-card)]">
       <div className="relative aspect-video bg-muted/20">
@@ -174,7 +186,11 @@ const CameraView = () => {
 
         {currentPose && isActive && !visibilityWarning && (
           <div className="absolute top-4 left-4 right-4 space-y-2">
-            <div className="bg-card/95 backdrop-blur-md rounded-lg p-4 border border-border shadow-lg">
+            <div className={`bg-card/95 backdrop-blur-md rounded-lg p-4 border-2 shadow-lg transition-all ${
+              isPoseCorrect(currentPose) 
+                ? 'border-success shadow-success/20' 
+                : 'border-warning shadow-warning/20'
+            }`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
@@ -183,12 +199,32 @@ const CameraView = () => {
                       Detected Pose
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold text-foreground mb-2">
+                  <h3 className="text-xl font-bold text-foreground mb-3">
                     {currentPose.pose}
                   </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {currentPose.feedback}
-                  </p>
+                  
+                  {/* Feedback Section with Icon */}
+                  <div className={`flex items-start gap-3 p-3 rounded-lg ${
+                    isPoseCorrect(currentPose)
+                      ? 'bg-success/10 border border-success/20'
+                      : 'bg-warning/10 border border-warning/20'
+                  }`}>
+                    {isPoseCorrect(currentPose) ? (
+                      <CheckCircle2 className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1">
+                      <p className={`text-xs font-semibold mb-1 uppercase tracking-wide ${
+                        isPoseCorrect(currentPose) ? 'text-success' : 'text-warning'
+                      }`}>
+                        {isPoseCorrect(currentPose) ? 'Pose Correct' : 'Needs Adjustment'}
+                      </p>
+                      <p className="text-sm text-foreground font-medium">
+                        {currentPose.feedback}
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 {currentPose.confidence > 0 && (
                   <Badge className={getConfidenceColor(currentPose.confidence)}>
