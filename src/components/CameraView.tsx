@@ -17,7 +17,7 @@ const CameraView = () => {
   const [visibilityWarning, setVisibilityWarning] = useState<string | null>(null);
   const { toast } = useToast();
   const animationFrameRef = useRef<number>();
-  const { speak, stop: stopSpeech, toggle: toggleSpeech, isEnabled: isSpeechEnabled } = useSpeechFeedback({ rate: 0.9 });
+  const { speakPose, stop: stopSpeech, toggle: toggleSpeech, reset: resetSpeech, isEnabled: isSpeechEnabled } = useSpeechFeedback({ rate: 0.9 });
 
   useEffect(() => {
     return () => {
@@ -79,6 +79,7 @@ const CameraView = () => {
       cancelAnimationFrame(animationFrameRef.current);
     }
     stopSpeech();
+    resetSpeech();
     setStream(null);
     setIsActive(false);
     setCurrentPose(null);
@@ -121,13 +122,12 @@ const CameraView = () => {
         if (classification.pose === 'Show Full Body' || classification.pose === 'Move Back') {
           setVisibilityWarning(classification.feedback);
           setCurrentPose(null);
-          speak(classification.feedback);
+          speakPose(classification.pose, classification.feedback);
         } else {
           setVisibilityWarning(null);
           setCurrentPose(classification);
-          // Speak the pose name and feedback
-          const message = `${classification.pose}. ${classification.feedback}`;
-          speak(message);
+          // Speak the pose name and feedback with smart debouncing
+          speakPose(classification.pose, classification.feedback);
         }
       }
 
