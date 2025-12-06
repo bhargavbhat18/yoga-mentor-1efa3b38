@@ -6,12 +6,6 @@ interface SpeechFeedbackOptions {
   volume?: number;
 }
 
-interface AnnouncementQueue {
-  poseName: string;
-  feedback: string;
-  timestamp: number;
-}
-
 export function useSpeechFeedback(options: SpeechFeedbackOptions = {}) {
   const { rate = 0.95, pitch = 1, volume = 1 } = options;
   const [isEnabled, setIsEnabled] = useState(true);
@@ -20,21 +14,21 @@ export function useSpeechFeedback(options: SpeechFeedbackOptions = {}) {
   const lastAnnouncedPoseRef = useRef<string>('');
   const lastPoseChangeTimeRef = useRef<number>(0);
   const lastFeedbackRef = useRef<string>('');
-  const poseStableCountRef = useRef<number>(0);
   const announcementCooldownRef = useRef<number>(0);
   
-  // Minimum time before announcing same pose again (8 seconds)
-  const SAME_POSE_COOLDOWN = 8000;
-  // Minimum time pose must be stable before announcing (reduces jitter)
-  const POSE_STABILITY_THRESHOLD = 500;
-  // Cooldown between any announcements (3 seconds)
-  const ANNOUNCEMENT_COOLDOWN = 3000;
-  // Required stable frames before announcing
-  const REQUIRED_STABLE_FRAMES = 3;
+  // Track recent pose detections for stability
+  const recentPosesRef = useRef<string[]>([]);
+  const currentStablePoseRef = useRef<string>('');
+  
+  // Configuration
+  const SAME_POSE_COOLDOWN = 10000; // 10 seconds before repeating same pose
+  const ANNOUNCEMENT_COOLDOWN = 3500; // 3.5 seconds between any announcements
+  const REQUIRED_STABLE_DETECTIONS = 8; // Need 8 consistent detections
+  const POSE_HISTORY_SIZE = 12; // Track last 12 detections
+  const STABILITY_THRESHOLD = 0.65; // 65% of recent detections must match
 
-  // Clean pose name for speech (remove Sanskrit in parentheses for cleaner audio)
+  // Clean pose name for speech (remove Sanskrit in parentheses)
   const getSpokenPoseName = useCallback((poseName: string): string => {
-    // Extract just the English name for cleaner speech
     const match = poseName.match(/^([^(]+)/);
     if (match) {
       return match[1].trim();
@@ -44,7 +38,6 @@ export function useSpeechFeedback(options: SpeechFeedbackOptions = {}) {
 
   // Get concise feedback for speech
   const getConciseFeedback = useCallback((feedback: string): string => {
-    // Shorten feedback for speech - take first sentence or key instruction
     const sentences = feedback.split(/[.!]/);
     if (sentences.length > 0) {
       return sentences[0].trim();
@@ -52,27 +45,70 @@ export function useSpeechFeedback(options: SpeechFeedbackOptions = {}) {
     return feedback;
   }, []);
 
+  // Check if a pose is stable in recent history
+  const checkPoseStability = useCallback((poseName: string): boolean => {
+    const history = recentPosesRef.current;
+    if (history.length < REQUIRED_STABLE_DETECTIONS) return false;
+    
+    const matchCount = history.filter(p => p === poseName).length;
+    const stabilityRatio = matchCount / history.length;
+    
+    return stabilityRatio >= STABILITY_THRESHOLD;
+  }, []);
+
+  // Get the most stable pose from recent history
+  const getMostStablePose = useCallback((): string | null => {
+    const history = recentPosesRef.current;
+    if (history.length < REQUIRED_STABLE_DETECTIONS) return null;
+    
+    // Count occurrences of each pose
+    const counts: Record<string, number> = {};
+    history.forEach(pose => {
+      counts[pose] = (counts[pose] || 0) + 1;
+    });
+    
+    // Find the most common pose
+    let maxCount = 0;
+    let mostCommon = '';
+    Object.entries(counts).forEach(([pose, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = pose;
+      }
+    });
+    
+    // Only return if it meets stability threshold
+    if (maxCount / history.length >= STABILITY_THRESHOLD) {
+      return mostCommon;
+    }
+    
+    return null;
+  }, []);
+
   const speakPose = useCallback((poseName: string, feedback: string) => {
     if (!isEnabled || !('speechSynthesis' in window)) return;
 
     const now = Date.now();
     
-    // Check global cooldown
-    if (now - announcementCooldownRef.current < ANNOUNCEMENT_COOLDOWN) {
-      return;
-    }
-
-    // Handle visibility warnings differently - always announce if different
+    // Handle visibility warnings - these bypass stability checks
     const isWarning = poseName === 'Show Full Body' || poseName === 'Move Back';
     
     if (isWarning) {
+      // Clear pose history on warnings
+      recentPosesRef.current = [];
+      currentStablePoseRef.current = '';
+      
       // Only repeat warning after longer cooldown
       if (poseName === lastAnnouncedPoseRef.current && 
           now - lastPoseChangeTimeRef.current < SAME_POSE_COOLDOWN * 1.5) {
         return;
       }
       
-      // Announce warning
+      // Check global cooldown
+      if (now - announcementCooldownRef.current < ANNOUNCEMENT_COOLDOWN) {
+        return;
+      }
+      
       announceText(feedback);
       lastAnnouncedPoseRef.current = poseName;
       lastPoseChangeTimeRef.current = now;
@@ -80,52 +116,62 @@ export function useSpeechFeedback(options: SpeechFeedbackOptions = {}) {
       return;
     }
 
-    // For actual poses - check stability
-    if (poseName === lastAnnouncedPoseRef.current) {
-      poseStableCountRef.current++;
-      
-      // Same pose detected multiple times - maybe give encouragement after a while
-      if (poseStableCountRef.current > 20 && 
-          now - lastPoseChangeTimeRef.current > SAME_POSE_COOLDOWN &&
-          feedback !== lastFeedbackRef.current) {
-        // Announce updated feedback for same pose
+    // Add to pose history
+    recentPosesRef.current.push(poseName);
+    if (recentPosesRef.current.length > POSE_HISTORY_SIZE) {
+      recentPosesRef.current.shift();
+    }
+
+    // Get the most stable pose from history
+    const stablePose = getMostStablePose();
+    
+    // If no stable pose yet, wait
+    if (!stablePose) {
+      return;
+    }
+
+    // If stable pose hasn't changed, don't announce again (unless cooldown passed)
+    if (stablePose === currentStablePoseRef.current) {
+      // Maybe update feedback if it changed significantly after long time
+      if (now - lastPoseChangeTimeRef.current > SAME_POSE_COOLDOWN &&
+          feedback !== lastFeedbackRef.current &&
+          now - announcementCooldownRef.current > ANNOUNCEMENT_COOLDOWN) {
         const conciseFeedback = getConciseFeedback(feedback);
         announceText(conciseFeedback);
         lastFeedbackRef.current = feedback;
         announcementCooldownRef.current = now;
-        lastPoseChangeTimeRef.current = now;
       }
       return;
     }
 
-    // New pose detected - require stability
-    poseStableCountRef.current++;
-    
-    if (poseStableCountRef.current < REQUIRED_STABLE_FRAMES) {
-      return; // Wait for pose to stabilize
+    // New stable pose detected - check cooldown
+    if (now - announcementCooldownRef.current < ANNOUNCEMENT_COOLDOWN) {
+      return;
     }
 
-    // Pose is stable and different - announce it
-    const spokenName = getSpokenPoseName(poseName);
+    // Verify the new pose is actually stable (double-check)
+    if (!checkPoseStability(stablePose)) {
+      return;
+    }
+
+    // Announce the new stable pose
+    const spokenName = getSpokenPoseName(stablePose);
     const conciseFeedback = getConciseFeedback(feedback);
-    
-    // Build natural announcement
     const announcement = `${spokenName}. ${conciseFeedback}`;
     
     announceText(announcement);
     
-    lastAnnouncedPoseRef.current = poseName;
+    currentStablePoseRef.current = stablePose;
+    lastAnnouncedPoseRef.current = stablePose;
     lastFeedbackRef.current = feedback;
     lastPoseChangeTimeRef.current = now;
     announcementCooldownRef.current = now;
-    poseStableCountRef.current = 0;
     
-  }, [isEnabled, getSpokenPoseName, getConciseFeedback]);
+  }, [isEnabled, getSpokenPoseName, getConciseFeedback, getMostStablePose, checkPoseStability]);
 
   const announceText = useCallback((text: string) => {
     if (!('speechSynthesis' in window)) return;
 
-    // Cancel any ongoing speech
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
@@ -161,8 +207,9 @@ export function useSpeechFeedback(options: SpeechFeedbackOptions = {}) {
     lastAnnouncedPoseRef.current = '';
     lastFeedbackRef.current = '';
     lastPoseChangeTimeRef.current = 0;
-    poseStableCountRef.current = 0;
     announcementCooldownRef.current = 0;
+    recentPosesRef.current = [];
+    currentStablePoseRef.current = '';
   }, []);
 
   return {
