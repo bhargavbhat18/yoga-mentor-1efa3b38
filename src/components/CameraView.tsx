@@ -157,8 +157,10 @@ const CameraView = () => {
   };
 
   return (
-    <Card className="relative overflow-hidden bg-gradient-to-br from-card to-muted/50 shadow-[var(--shadow-card)]">
-      <div className="relative aspect-video bg-muted/20">
+    <Card className={`relative overflow-hidden bg-gradient-to-br from-card to-muted/50 shadow-[var(--shadow-card)] transition-all duration-300 ${
+      isActive ? 'fixed inset-0 z-50 rounded-none' : ''
+    }`}>
+      <div className={`relative bg-muted/20 ${isActive ? 'h-[calc(100%-72px)]' : 'aspect-video'}`}>
         <video
           ref={videoRef}
           className="absolute inset-0 w-full h-full object-cover"
