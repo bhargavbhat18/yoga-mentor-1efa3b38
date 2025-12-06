@@ -2,8 +2,9 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Camera, CameraOff, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Camera, CameraOff, Loader2, CheckCircle2, AlertCircle, Volume2, VolumeX } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useSpeechFeedback } from '@/hooks/useSpeechFeedback';
 import { detectPose, classifyPose, drawPoseLandmarks, initializePoseDetection, type PoseClassification } from '@/utils/poseDetection';
 
 const CameraView = () => {
@@ -16,6 +17,7 @@ const CameraView = () => {
   const [visibilityWarning, setVisibilityWarning] = useState<string | null>(null);
   const { toast } = useToast();
   const animationFrameRef = useRef<number>();
+  const { speak, stop: stopSpeech, toggle: toggleSpeech, isEnabled: isSpeechEnabled } = useSpeechFeedback({ rate: 0.9 });
 
   useEffect(() => {
     return () => {
@@ -76,6 +78,7 @@ const CameraView = () => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
+    stopSpeech();
     setStream(null);
     setIsActive(false);
     setCurrentPose(null);
@@ -118,9 +121,13 @@ const CameraView = () => {
         if (classification.pose === 'Show Full Body' || classification.pose === 'Move Back') {
           setVisibilityWarning(classification.feedback);
           setCurrentPose(null);
+          speak(classification.feedback);
         } else {
           setVisibilityWarning(null);
           setCurrentPose(classification);
+          // Speak the pose name and feedback
+          const message = `${classification.pose}. ${classification.feedback}`;
+          speak(message);
         }
       }
 
@@ -258,13 +265,24 @@ const CameraView = () => {
               )}
             </Button>
           ) : (
-            <Button
-              onClick={stopCamera}
-              variant="destructive"
-            >
-              <CameraOff className="w-4 h-4 mr-2" />
-              Stop Camera
-            </Button>
+            <>
+              <Button
+                onClick={toggleSpeech}
+                variant="outline"
+                size="icon"
+                className={isSpeechEnabled ? 'border-primary text-primary' : 'border-muted-foreground text-muted-foreground'}
+                title={isSpeechEnabled ? 'Disable voice guidance' : 'Enable voice guidance'}
+              >
+                {isSpeechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </Button>
+              <Button
+                onClick={stopCamera}
+                variant="destructive"
+              >
+                <CameraOff className="w-4 h-4 mr-2" />
+                Stop Camera
+              </Button>
+            </>
           )}
         </div>
       </div>
