@@ -24,30 +24,33 @@ export const YOGA_POSES = {
 };
 
 let poseLandmarker: PoseLandmarker | null = null;
-let isInitialized = false;
+let currentRunningMode: "VIDEO" | "IMAGE" | null = null;
+
+async function createPoseLandmarker(runningMode: "VIDEO" | "IMAGE"): Promise<PoseLandmarker> {
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+  );
+  
+  return await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task",
+      delegate: "GPU"
+    },
+    runningMode,
+    numPoses: 1,
+    minPoseDetectionConfidence: 0.5,
+    minPosePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+}
 
 export async function initializePoseDetection(): Promise<void> {
-  if (isInitialized && poseLandmarker) return;
+  if (poseLandmarker && currentRunningMode === "VIDEO") return;
 
   try {
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
-    
-    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task",
-        delegate: "GPU"
-      },
-      runningMode: "VIDEO",
-      numPoses: 1,
-      minPoseDetectionConfidence: 0.5,
-      minPosePresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-    
-    isInitialized = true;
-    console.log('Pose detection initialized successfully');
+    poseLandmarker = await createPoseLandmarker("VIDEO");
+    currentRunningMode = "VIDEO";
+    console.log('Pose detection initialized for VIDEO mode');
   } catch (error) {
     console.error('Error initializing pose detection:', error);
     throw error;
@@ -85,26 +88,14 @@ export async function detectPose(
 export async function detectPoseFromImage(
   imageElement: HTMLImageElement
 ): Promise<PoseResult | null> {
-  if (!poseLandmarker) {
-    // Initialize for image mode
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
-    );
-    
-    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task",
-        delegate: "GPU"
-      },
-      runningMode: "IMAGE",
-      numPoses: 1,
-      minPoseDetectionConfidence: 0.5,
-      minPosePresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-  }
-
   try {
+    // Always recreate for IMAGE mode if currently in VIDEO mode or not initialized
+    if (!poseLandmarker || currentRunningMode !== "IMAGE") {
+      console.log('Switching to IMAGE mode for pose detection');
+      poseLandmarker = await createPoseLandmarker("IMAGE");
+      currentRunningMode = "IMAGE";
+    }
+
     const result = poseLandmarker.detect(imageElement);
     
     if (result.landmarks && result.landmarks.length > 0) {
